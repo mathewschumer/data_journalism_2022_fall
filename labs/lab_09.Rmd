@@ -1,0 +1,170 @@
+---
+title: "lab_09"
+author: "Derek Willis"
+date: "11/09/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## You will need
+
+* the tidyverse, janitor and tigris libraries
+* you might choose to use the tidycensus library for Q3
+
+## Load libraries and establish settings
+
+**Task** Create a codeblock and load appropriate packages and settings for this lab.
+
+```{r}
+# Turn off scientific notation
+options(scipen=999)
+
+# Load libraries
+
+library(tigris)
+library(tidyverse)
+library(sf)
+library(janitor)
+library(tidycensus)
+
+```
+
+Let's explore the election results from last night and make some maps! 
+
+## Questions 
+
+**Q1.** Make a county-level map of Maryland's results for governor using `md_gov_county.csv` in the data folder,
+
+```{r}
+gov_county <- read.csv("data/md_gov_county.csv") %>% 
+  clean_names() %>% 
+  mutate(geoid = as.character(geoid)) %>% 
+  mutate(total = (moore + cox + lashar + wallace + harding + write_ins)) %>% 
+  mutate(percmoore = (moore / total)*100) %>% 
+  mutate(perccox = (cox / total)*100) %>% 
+  mutate(moorevcox = (perccox - percmoore))
+
+counties <- counties()
+
+
+md_counties <- counties %>%
+  filter(STATEFP == "24") %>% 
+  clean_names() %>% 
+  rename(county = name) %>% 
+  select(!namelsad)
+
+md_counties
+
+gov_county
+
+```
+
+
+calculating the difference between Wes Moore's percentage of the total votes and 
+
+```{r}
+md <- gov_county %>%
+  left_join(md_counties, by=c("geoid"))
+```
+
+
+Dan Cox's percentage of the total votes and displaying that percentage difference on the map.
+
+```{r}
+ggplot() +
+  geom_sf(data=md, aes(fill=moorevcox, geometry=geometry)) +
+  scale_colour_viridis_b(option="magma") +
+  theme_minimal()
+```
+
+
+What is the story here, and what is the county with the most interesting results?
+
+**A1.**  The story here is simply that Moore outperformed Cox in most of the counties in the state. I would say that the most interesting results turned up in the counties that voted the most for Moore, such as Prince George, Montgomery, and Baltimore City.
+
+**Q2.** 
+You can use the dataframe you initially loaded for Q1, and you'll need to load the 2018 governor results in the data folder and join them to it before proceeding.
+
+```{r}
+gov_18 <- read.csv("data/md_gov_county_18.csv") %>% 
+  clean_names() %>% 
+  mutate(geoid = as.character(geoid)) %>% 
+  mutate(total_18 = hogan + jealous + quinn + schlakman + write_ins)
+
+md_22_18 <- md %>%
+  left_join(gov_18, by=c("geoid")) %>% 
+  mutate(perchogan = (hogan / total_18)*100) %>% 
+  mutate(perccox = (cox / total)*100) %>% 
+  mutate(hoganvcox = (perccox - perchogan))
+  
+
+```
+
+
+Make another map showing the difference between Dan Cox's county-level performance in 2022 and Larry Hogan's in 2018, 
+using percentages to compare the two as you did in Q1.
+
+```{r}
+ggplot() +
+  geom_sf(data=md_22_18, aes(fill=hoganvcox, geometry=geometry)) +
+  scale_colour_viridis_b(option="magma") +
+  theme_minimal()
+```
+
+Are there any counties where Cox got a higher percentage than Hogan? How would you describe the map showing the Hogan-Cox difference?
+
+Also answer this: is a map the best way to present this data? What else could you make that might convey more information?
+
+**A2.** Cox didn't do better than Hogan in any Maryland county, and the map is not a great way of presenting this because the percentages are all in the negative. I could see a bar chart or something of the like being a better representation of this data.
+
+**Q3** Which county has the highest percentage of mail ballots remaining to be counted?
+Using the `mail_remaining.csv` file in the data folder, calculate the percentage of mail ballots remaining, then map a county map of those percentages.
+
+```{r}
+mail_remaining <- read.csv("data/mail_remaining.csv") %>% 
+  clean_names() %>% 
+  mutate(geoid = as.character(geoid))
+
+md_mail <- md_counties %>%
+  left_join(mail_remaining, by=c("geoid")) %>% 
+  mutate(perc_remain = (remaining/total_returned)*100)
+
+ggplot() +
+  geom_sf(data=md_mail, aes(fill=perc_remain, geometry=geometry)) +
+  scale_colour_viridis_b(option="magma") +
+  theme_minimal()
+```
+
+
+Looking at both the map and the data, are there counties where the candidate currently leading the governor's race could, in theory, change?
+
+**A3** A great deal of the counties in the data have high percentages of mail ballots remaining to be counted, which means that the current race in these counties could change when the rest of the votes are counted.
+
+
+**Q4.** Choose your own map adventure! In the data folder I've included county-level results for several other 2022 contests, including the Comptroller, Attorney General and the marijuana legalization amendment. I've also added the 2020 presidential results by county. Using one of the 2022 races that we haven't already used and at least one other contest for comparison, make a county-level map showing what you think is the most interesting aspect of that data, and describe the results in terms of a possible story. You can bring in other data, such as Census information, if you like.
+
+**A4.**  For this question, I decided to pursue a topic we discussed during class, particularly that of the vote to decriminalize marijuana garnering more favor than the winning gubernatorial candidate Wes Moore. To do this, I brought in the data regarding the marijuana vote and the data regarding the gubernatorial vote and joined them to produce a column displaying the difference between the percentage in favor of legalizing marijuana and the percentage of votes overall for Wes Moore for each county. I then input this data into the map to present which counties voted more (or less) to legalize marijuana than for Wes Moore.
+
+```{r}
+weed <- read.csv("data/md_marijuana_county.csv") %>% 
+  clean_names() %>% 
+  mutate(geoid = as.character(geoid))
+
+md_weed <- md_counties %>%
+  left_join(weed, by=c("geoid")) %>% 
+  mutate(perc_for = (favor/total)*100)
+
+moore_weed <- md_weed %>%
+  left_join(gov_county, by=c("geoid")) %>% 
+  mutate(moorevweed = (perc_for - percmoore))
+
+map <- ggplot() +
+  geom_sf(data=moore_weed, aes(fill=moorevweed, geometry=geometry))
+  
+map + scale_fill_gradient(low='white', high='green4')
+
+
+```
