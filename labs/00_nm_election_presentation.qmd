@@ -1,0 +1,308 @@
+---
+title: "00_nm_election_project"
+author: "Mathew Schumer"
+format: html
+editor: visual
+---
+
+## Introduction
+
+```{r libraries}
+options(scipen=999)
+library(tigris)
+library(tidyverse)
+library(sf)
+library(janitor)
+library(tidycensus)
+library(stringr)
+library(scales)
+library(lubridate)
+library(patchwork)
+library(broom)
+```
+
+```{r}
+# Dem Raised
+dem_raised <- read.csv("nm_data/nm_dem_raised.csv") %>%
+    mutate(contributor_zip = str_sub(contributor_zip, start=1L, end=5L)) %>% 
+    mutate(contribution_receipt_date = str_sub(contribution_receipt_date, start=1L, end=10L))
+  
+# Dem Spent
+dem_spent <- read.csv("nm_data/nm_dem_spent.csv") %>% 
+  mutate(disbursement_date = str_sub(disbursement_date, start=1L, end=10L))
+
+# Rep Raised
+rep_raised <- read.csv("nm_data/nm_rep_raised.csv") %>%
+  mutate(contributor_zip = str_sub(contributor_zip, start=1L, end=5L)) %>% 
+  mutate(contribution_receipt_date = str_sub(contribution_receipt_date, start=1L, end=10L))
+  
+# Rep Spent
+rep_spent <- read.csv("nm_data/nm_rep_spent.csv") %>% 
+  mutate(disbursement_date = str_sub(disbursement_date, start=1L, end=10L))
+```
+
+## Contribution Summaries
+
+In this first codeblock, I created summaries for the datasets dealing with the amount raised by both parties in New Mexico leading up to the 2022 election.
+
+```{r}
+# Dem Raised Summaries
+  dem_raised_summary <- dem_raised %>% 
+    summarise(sum = sum(contribution_receipt_amount),
+            mean = mean(contribution_receipt_amount),
+            median = median(contribution_receipt_amount),
+            range = max(contribution_receipt_amount) - min(contribution_receipt_amount),
+            high = max(contribution_receipt_amount),
+            low = min(contribution_receipt_amount))
+  
+# Rep Raised Summary
+  rep_raised_summary <- rep_raised %>% 
+    summarise(sum = sum(contribution_receipt_amount),
+              mean = mean(contribution_receipt_amount),
+              median = median(contribution_receipt_amount),
+              range = max(contribution_receipt_amount) - min(contribution_receipt_amount),
+              high = max(contribution_receipt_amount),
+              low = min(contribution_receipt_amount))
+  
+  
+```
+
+The first thing I noticed was the glaring difference in totals raised by each party. New Mexico Democrats raised \$2,842,510, while Republicans raised only \$434,879.70; accounting for a difference of over \$2 million, or 66.02%. Another interesting difference I noticed was the fact that the Republican median contribution was \$200 compared to the Democrat's median contribution of \$100, while the Republican mean contribution was \$829.92 and Democrat's mean contribution was \$1485.89. This made me wonder if the overall contribution numbers were skewed by large donations, and what the numbers would look like if I focused only on individual contributions.
+
+```{r}
+# Dem Raised Summaries
+  ind_dem_raised_summary <- dem_raised %>%
+    filter(entity_type == "IND") %>% 
+    summarise(sum = sum(contribution_receipt_amount),
+            mean = mean(contribution_receipt_amount),
+            median = median(contribution_receipt_amount),
+            range = max(contribution_receipt_amount) - min(contribution_receipt_amount),
+            high = max(contribution_receipt_amount),
+            low = min(contribution_receipt_amount))
+  
+# Rep Raised Summary
+  ind_rep_raised_summary <- rep_raised %>% 
+    filter(entity_type == "IND") %>% 
+    summarise(sum = sum(contribution_receipt_amount),
+              mean = mean(contribution_receipt_amount),
+              median = median(contribution_receipt_amount),
+              range = max(contribution_receipt_amount) - min(contribution_receipt_amount),
+              high = max(contribution_receipt_amount),
+              low = min(contribution_receipt_amount))
+  
+```
+
+Here, we find that there is still a difference between the donor base of both committees in terms of individual contributions, though it is less pronounced than when I factored in all of the data. For example, the individual contribution mean for the Dems is \$537.51, while the same mean for the Reps is only a little over \$30 less at \$501.65. This indicates that large donors have a heavy skew on the Democrats' committe donations, and likely account for a much larger percentage.
+
+But what about the biggest donors? In this next codeblock, I created dataframes that display the largest donors (in descending order) of both the party committees.
+
+```{r}
+# Dem Biggest Donors
+  dem_big_donors <- dem_raised %>% 
+    group_by(contributor_name) %>%
+    summarise(
+      count_contribs = n(),
+      total_amount = sum(contribution_receipt_amount)
+    ) %>%
+    mutate(percent_dem_dono = (total_amount/2842510)*100) %>% 
+    arrange(desc(total_amount))
+
+# Republican Biggest Donors
+  rep_big_donors <- rep_raised %>% 
+    group_by(contributor_name) %>%
+    summarise(
+      count_contribs = n(),
+      total_amount = sum(contribution_receipt_amount)
+    ) %>%
+    mutate(percent_rep_dono = (total_amount/434879.7)*100) %>%
+    arrange(desc(total_amount))
+```
+
+I found in both of these datasets exactly what I expected to find; that the biggest PAC/Organizational donors were notable PACs and committees that show up on lists of campaign usual suspects in any state. The New Mexico Democrats' first two top donors listed here were ActBlue and the Democratic Congressional Campaign Committee, and the top donor for the Republicans was the RNC. I did, however notice some interesting donations towards the top of the list on both sides.
+
+The Republicans' second largest donor was a committee called "MARK MOORES FOR CONGRESS," which is the campaign committee of Mark Moores, who is a Republican member of the New Mexico State Senate. His campaign committee donated \$30,900, which accounted for about 7% of all contributions for the party. On the Democrats' side, I noticed that congresswoman Nancy Pelosi's campaign committee donated \$79,720.05, accounting for about 2% of the party's recieved contributions in New Mexico.
+
+```{r}
+# Dem Biggest Donors
+  ind_dem_big_donors <- dem_raised %>%
+    filter(entity_type == "IND") %>% 
+    group_by(contributor_name) %>%
+    summarise(
+      count_contribs = n(),
+      total_amount = sum(contribution_receipt_amount)
+    ) %>%
+    mutate(percent_dem_dono = (total_amount/2842510)*100) %>% 
+    arrange(desc(total_amount))
+
+# Republican Biggest Donors
+  ind_rep_big_donors <- rep_raised %>% 
+    filter(entity_type == "IND") %>% 
+    group_by(contributor_name) %>%
+    summarise(
+      count_contribs = n(),
+      total_amount = sum(contribution_receipt_amount)
+    ) %>%
+    mutate(percent_rep_dono = (total_amount/434879.7)*100) %>%
+    arrange(desc(total_amount))
+```
+
+I didn't find too much relevant information about any of the top individual donors for either party, but I did find a few interesting tidbits. Joey Kaempfer, who was the biggest donor for the NM Dems, made three contributions to the party, totaling to \$30,000. Kaempfer runs McArthurGlen, which is a designer outlet development firm based in the U.K.
+
+The NM Reps' top individual donor was the late John A. Yates Sr., who made a single contribution of \$15,000 in June 2022 (half of Kaempfer's donation), before passing away five months later. In his obituary on the Albuquerque Journal's website, I found out that "John was appointed by five United States Presidents, starting with President Reagan, to serve on the National Petroleum Council advisory committee."
+
+## Receipt Summaries
+
+In this codeblock, I created summaries for the overall spending of each committee.
+
+```{r}
+# Dem Total Spent: 1,565,948
+  dem_spent_summary <- dem_spent %>% 
+    summarise(sum = sum(disbursement_amount),
+              mean = mean(disbursement_amount),
+              median = median(disbursement_amount),
+              range = max(disbursement_amount) - min(disbursement_amount),
+              high = max(disbursement_amount),
+              low = min(disbursement_amount))
+  
+
+# Rep Total Spent: 355,866.3
+  rep_spent_summary <- rep_spent %>% 
+    summarise(sum = sum(disbursement_amount),
+              mean = mean(disbursement_amount),
+              median = median(disbursement_amount),
+              range = max(disbursement_amount) - min(disbursement_amount),
+              high = max(disbursement_amount),
+              low = min(disbursement_amount))
+```
+
+As I had assumed based on the amount both committees raised in contributions, the Democrats spent much more money than the Republicans. While the Dems spent \$1,565,948 with a mean of \$1,912.02, the Reps only spent \$355,866.30 with a mean of \$696.41.
+
+In my next codeblock, I broke down the data for each of the committee's receipts.
+
+```{r}
+# Dem Recipients
+  dem_recipients <- dem_spent %>% 
+    group_by(recipient_name) %>%
+    summarise(
+      count_recip = n(),
+      total_amount = sum(disbursement_amount)
+    ) %>%
+    mutate(percent_dem_rec = (total_amount/1565948)*100) %>% 
+    arrange(desc(total_amount))
+
+  
+# Republican Recipients
+  rep_recipients <- rep_spent %>% 
+    group_by(recipient_name) %>%
+    summarise(
+      count_recip = n(),
+      total_amount = sum(disbursement_amount)
+    ) %>%
+    mutate(percent_rep_rec = (total_amount/355866.3)*100) %>%
+    arrange(desc(total_amount))
+```
+
+For Democrats, the disbursement data wasn't that interesting. Their biggest recipient was The Payroll Company, which received about \$581,000 (37% of their total spending) and went towards paying employees. A few individuals received payments from the party, but were mostly also employees, like like Miranda Van Dijk who got 34 disbursements from the party totaling about \$76,000.
+
+Payroll was also one Republicans' most paid for commodities, but it only accounted for about two percent of their total spending. Their biggest recipient was actually GEORGIA REPUBLICAN PARTY INC., which received two payments from the NM Reps totaling \$77,460 and making up about 21% of their total spending. The party's largest amount of disbursements to a single donor were also to the party at-large, with 304 individual disbursements going to WINRED- though these payments only added up to a little over \$6,000.
+
+Again, I was interested in what these numbers look like on an individual scale, so I created two dataframes displaying the refunds each committee made.
+
+## Refunds
+
+```{r}
+# Republican Refunds: $12,450.44
+  rep_refunds <- rep_spent %>% 
+    filter(str_detect(disbursement_description, "REFUND|REFUND OF EXCESS CONTRIBUTION DATED 10/20/20|DEPOSIT CORRECTION"))
+  
+  rep_refunds %>% 
+    summarise(
+      count_recip = n(),
+      total_amount = sum(disbursement_amount)
+    )
+  
+# Democrat Refunds: $41,263.01
+  dem_refunds <- dem_spent %>% 
+    filter(str_detect(disbursement_description, "REFUND|VOID REFUND CHECK 10/8/2020 LOST IN MAIL. REISSUED ON 3.19.2021|REFUND OF VOTER FILE ACCESS PAYMENT - RECEIVED ON 3/31/22|REFUND OF VOTER FILE ACCESS PAYMENT - RECEIVED ON 1/20/22|REFUND OF EXCESSIVE CONTRIBUTION MADE ON 10/24/21.|REFUND OF OVER LIMIT|REISSUE OF 10/08/2020 REFUND DUE TO CHECK LOST IN MAIL|REISSUE OF 3/19/2021 REFUND DUE TO CHECK LOST IN MAIL|EVENT VENUE DEPOSIT TO BE REFUNDED|REFUND OF PAYMENT MADE ON 12/3/21")) 
+    
+  dem_refunds %>% 
+    summarise(
+      count_recip = n(),
+      total_amount = sum(disbursement_amount)
+    )
+
+```
+
+From these dataframes, I determined that the Democrat committee refunded over \$41,000, while the Republicans only refunded \$12,450. I thought it was interesting that two of the Dem refunds listed in their description that the refund was because a check was lost in the mail. An interesting story would be one that looks into why this occurred. Another curious bit of information I found was the fact that John A. Yates Sr. (the largest donor for the Republicans) was refunded his contribution in its entirety only two days after making it.
+
+## In-State vs. Out-Of-State
+
+```{r}
+# Dem Raised In-state
+dem_raised_in <- dem_raised %>% 
+  filter(contributor_state == "NM") %>% 
+  summarise(
+      count_recip = n(),
+      total_amount = sum(contribution_receipt_amount))
+
+# Dem Raised In-state
+dem_raised_out <- dem_raised %>% 
+  filter(!contributor_state == "NM") %>% 
+  summarise(
+      count_recip = n(),
+      total_amount = sum(contribution_receipt_amount))
+
+  
+# Dem Spent In-State
+dem_spent_in <- dem_spent %>% 
+  filter(recipient_state == "NM") %>%
+  summarise(
+      count_recip = n(),
+      total_amount = sum(disbursement_amount))
+
+# Dem Spent Out of State
+dem_spent_out <- dem_spent %>% 
+  filter(!recipient_state == "NM") %>%
+  summarise(
+      count_recip = n(),
+      total_amount = sum(disbursement_amount))
+
+
+# Rep Raised In-State 
+rep_raised_in <- rep_raised %>% 
+  filter(contributor_state == "NM") %>% 
+  summarise(
+      count_recip = n(),
+      total_amount = sum(contribution_receipt_amount))
+
+# Rep Raised In-State 
+rep_raised_out <- rep_raised %>% 
+  filter(!contributor_state == "NM") %>% 
+  summarise(
+      count_recip = n(),
+      total_amount = sum(contribution_receipt_amount))
+
+  
+# Rep Spent Out of State
+rep_spent_in <-rep_spent %>% 
+  filter(recipient_state == "NM") %>%
+  summarise(
+      count_recip = n(),
+      total_amount = sum(disbursement_amount))
+
+# Rep Spent Out of State
+rep_spent_out <-rep_spent %>% 
+  filter(!recipient_state == "NM") %>%
+  summarise(
+      count_recip = n(),
+      total_amount = sum(disbursement_amount))
+  
+```
+
+![](images/OjHJP-democrats-in-new-mexico-raise-most-money-out-of-state.png)
+
+https://datawrapper.dwcdn.net/OjHJP/1/
+
+![](images/a4ikr-new-mexico-dems-spend-more-out-of-state-than-reps-spend-in-state.png)
+
+https://datawrapper.dwcdn.net/a4ikr/1/
